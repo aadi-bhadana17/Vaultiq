@@ -24,6 +24,7 @@ public class FixtureResponse {
     private String status;
     private LocalDateTime scheduledAt;
     private MatchResultResponse matchResult;
+    private java.math.BigDecimal platformProfit;
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
 }

@@ -37,6 +37,16 @@ public class Fixture {
     @Builder.Default
     private int matchMinute = 0;
 
+    @Column(name = "additional_time_minutes", nullable = false)
+    @Builder.Default
+    private int additionalTimeMinutes = 0;
+
+    @Column(name = "clock_status_updated_at")
+    private LocalDateTime clockStatusUpdatedAt;
+
+    @Column(name = "platform_profit", precision = 12, scale = 2)
+    private java.math.BigDecimal platformProfit;
+
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 20)
     @Builder.Default

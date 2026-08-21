@@ -107,6 +107,23 @@ public class FixtureService {
     }
 
     @Transactional(readOnly = true)
+    public List<LiveFeedResponse> getLiveFeedBySeason(UUID seasonId) {
+        seasonService.findSeasonOrThrow(seasonId);
+        return fixtureRepository.findActiveFeedFixturesBySeasonId(seasonId).stream()
+                .map(fixture -> {
+                    LiveFeedResponse.LiveFeedResponseBuilder builder = LiveFeedResponse.builder()
+                            .fixture(mapToResponse(fixture));
+                    try {
+                        builder.odds(oddsService.getOddsForFixture(fixture.getId()));
+                    } catch (Exception e) {
+                        builder.odds(null);
+                    }
+                    return builder.build();
+                })
+                .collect(Collectors.toList());
+    }
+
+    @Transactional(readOnly = true)
     public List<FixtureResponse> getFixturesBySeason(UUID seasonId) {
         seasonService.findSeasonOrThrow(seasonId);
         return fixtureRepository.findBySeasonId(seasonId).stream()
@@ -151,7 +168,10 @@ public class FixtureService {
     private void validateStatusTransition(FixtureStatus from, FixtureStatus to) {
         boolean valid = switch (from) {
             case SCHEDULED -> to == FixtureStatus.OPEN;
-            case OPEN -> to == FixtureStatus.LOCKED || to == FixtureStatus.FINISHED;
+            case OPEN -> to == FixtureStatus.LOCKED || to == FixtureStatus.FINISHED || to == FixtureStatus.HALF_TIME || to == FixtureStatus.AWAITING_EXTRA_TIME;
+            case HALF_TIME -> to == FixtureStatus.OPEN;
+            case AWAITING_EXTRA_TIME -> to == FixtureStatus.ADDITIONAL_TIME || to == FixtureStatus.FINISHED;
+            case ADDITIONAL_TIME -> to == FixtureStatus.FINISHED;
             case LOCKED -> to == FixtureStatus.OPEN || to == FixtureStatus.FINISHED;
             case FINISHED -> false;
         };
@@ -172,6 +192,7 @@ public class FixtureService {
                 .matchMinute(fixture.getMatchMinute())
                 .status(fixture.getStatus().name())
                 .scheduledAt(fixture.getScheduledAt())
+                .platformProfit(fixture.getPlatformProfit())
                 .createdAt(fixture.getCreatedAt())
                 .updatedAt(fixture.getUpdatedAt());
 

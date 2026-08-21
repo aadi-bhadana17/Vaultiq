@@ -23,8 +23,8 @@ import java.util.UUID;
 /**
  * CashoutService — handles manual and auto-triggered cashout for bets.
  *
- * Cashout value = stake × (currentOdds / oddsAtPlacement)
- * If currentOdds improved → profit, if worsened → partial loss
+ * Cashout value = stake × (oddsAtPlacement / currentOdds)
+ * If currentOdds worsened (higher) → partial loss; if improved (lower) → profit
  */
 @Slf4j
 @Service
@@ -51,8 +51,8 @@ public class CashoutService {
         BigDecimal currentOdds = getOddsForOutcome(odds, bet.getOutcome().name());
 
         return bet.getStake()
-                .multiply(currentOdds)
-                .divide(bet.getOddsAtPlacement(), 2, RoundingMode.HALF_UP);
+                .multiply(bet.getOddsAtPlacement())
+                .divide(currentOdds, 2, RoundingMode.HALF_UP);
     }
 
     /**
@@ -71,8 +71,8 @@ public class CashoutService {
         BigDecimal currentOdds = getOddsForOutcome(odds, bet.getOutcome().name());
 
         BigDecimal cashoutAmount = bet.getStake()
-                .multiply(currentOdds)
-                .divide(bet.getOddsAtPlacement(), 2, RoundingMode.HALF_UP);
+                .multiply(bet.getOddsAtPlacement())
+                .divide(currentOdds, 2, RoundingMode.HALF_UP);
 
         bet.setStatus(BetStatus.CASHED_OUT);
         bet.setCashedOut(true);

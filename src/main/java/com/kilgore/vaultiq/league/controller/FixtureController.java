@@ -42,6 +42,12 @@ public class FixtureController {
         return ResponseEntity.ok(ApiResponse.success(feed));
     }
 
+    @GetMapping("/feed/season/{seasonId}")
+    public ResponseEntity<ApiResponse<List<LiveFeedResponse>>> getLiveFeedBySeason(@PathVariable UUID seasonId) {
+        List<LiveFeedResponse> feed = fixtureService.getLiveFeedBySeason(seasonId);
+        return ResponseEntity.ok(ApiResponse.success(feed));
+    }
+
     // ── Fixture CRUD ──
 
     @PostMapping
@@ -102,5 +108,20 @@ public class FixtureController {
     public ResponseEntity<ApiResponse<MatchResultResponse>> finishFixture(@PathVariable UUID id) {
         MatchResultResponse response = matchResultService.finishFixture(id);
         return ResponseEntity.ok(ApiResponse.success("Fixture finished — result is final", response));
+    }
+
+    @PostMapping("/{id}/resume-half-time")
+    @PreAuthorize("hasAnyRole('LEAGUE_ADMIN', 'ADMIN')")
+    public ResponseEntity<ApiResponse<Void>> resumeHalfTime(@PathVariable UUID id) {
+        matchResultService.resumeHalfTime(id);
+        return ResponseEntity.ok(ApiResponse.success("Match resumed from half-time", null));
+    }
+
+    @PostMapping("/{id}/additional-time")
+    @PreAuthorize("hasAnyRole('LEAGUE_ADMIN', 'ADMIN')")
+    public ResponseEntity<ApiResponse<Void>> setAdditionalTime(
+            @PathVariable UUID id, @RequestParam int minutes) {
+        matchResultService.setAdditionalTime(id, minutes);
+        return ResponseEntity.ok(ApiResponse.success("Additional time set to " + minutes + " minutes", null));
     }
 }
