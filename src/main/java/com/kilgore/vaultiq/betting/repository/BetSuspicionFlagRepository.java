@@ -18,5 +18,7 @@ public interface BetSuspicionFlagRepository extends JpaRepository<BetSuspicionFl
 
     Page<BetSuspicionFlag> findByResolvedFalseOrderByCreatedAtDesc(Pageable pageable);
 
+    Page<BetSuspicionFlag> findByResolvedTrueOrderByCreatedAtDesc(Pageable pageable);
+
     Page<BetSuspicionFlag> findByUserIdOrderByCreatedAtDesc(UUID userId, Pageable pageable);
 }

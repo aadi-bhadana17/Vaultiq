@@ -2,6 +2,7 @@ package com.kilgore.vaultiq.betting.service;
 
 import com.kilgore.vaultiq.automation.service.DynamicBetLimitService;
 import com.kilgore.vaultiq.betting.dto.BetResponse;
+import com.kilgore.vaultiq.betting.dto.BetStatsResponse;
 import com.kilgore.vaultiq.betting.dto.PlaceBetRequest;
 import com.kilgore.vaultiq.betting.entity.*;
 import com.kilgore.vaultiq.betting.repository.BetRepository;
@@ -228,6 +229,25 @@ public class BettingService {
         return mapToResponse(bet);
     }
 
+    @Transactional(readOnly = true)
+    public BetStatsResponse getBetStats() {
+        User user = userService.getCurrentUser();
+        long totalBets = betRepository.countByUserId(user.getId());
+        long wonBets = betRepository.countByUserIdAndStatus(user.getId(), BetStatus.WON);
+        
+        BigDecimal winRate = BigDecimal.ZERO;
+        if (totalBets > 0) {
+            winRate = BigDecimal.valueOf(wonBets)
+                    .multiply(new BigDecimal("100"))
+                    .divide(BigDecimal.valueOf(totalBets), 2, RoundingMode.HALF_UP);
+        }
+
+        return BetStatsResponse.builder()
+                .totalBets(totalBets)
+                .winRate(winRate)
+                .build();
+    }
+
     // ── Helpers ──
 
     private BetOutcome parseOutcome(String outcome) {
@@ -282,6 +302,9 @@ public class BettingService {
                 .cashoutAmount(bet.getCashoutAmount())
                 .createdAt(bet.getCreatedAt())
                 .settledAt(bet.getSettledAt())
+                .insured(bet.getInsurance() != null)
+                .insurancePremium(bet.getInsurance() != null ? bet.getInsurance().getPremium() : null)
+                .insuranceRefundPercentage(bet.getInsurance() != null ? bet.getInsurance().getRefundPercentage() : null)
                 .build();
     }
 }

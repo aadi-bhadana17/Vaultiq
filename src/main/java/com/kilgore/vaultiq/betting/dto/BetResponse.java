@@ -29,4 +29,8 @@ public class BetResponse {
     private BigDecimal cashoutAmount;
     private LocalDateTime createdAt;
     private LocalDateTime settledAt;
+    
+    private boolean insured;
+    private BigDecimal insurancePremium;
+    private BigDecimal insuranceRefundPercentage;
 }

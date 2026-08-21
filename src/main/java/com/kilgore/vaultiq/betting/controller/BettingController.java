@@ -1,6 +1,7 @@
 package com.kilgore.vaultiq.betting.controller;
 
 import com.kilgore.vaultiq.betting.dto.BetResponse;
+import com.kilgore.vaultiq.betting.dto.BetStatsResponse;
 import com.kilgore.vaultiq.betting.dto.PlaceBetRequest;
 import com.kilgore.vaultiq.betting.service.BettingService;
 import com.kilgore.vaultiq.shared.dto.ApiResponse;
@@ -31,6 +32,12 @@ public class BettingController {
             @RequestParam(defaultValue = "20") int size) {
         List<BetResponse> bets = bettingService.getUserBets(page, size);
         return ResponseEntity.ok(ApiResponse.success(bets));
+    }
+
+    @GetMapping("/stats")
+    public ResponseEntity<ApiResponse<BetStatsResponse>> getBetStats() {
+        BetStatsResponse response = bettingService.getBetStats();
+        return ResponseEntity.ok(ApiResponse.success(response));
     }
 
     @GetMapping("/{id}")
