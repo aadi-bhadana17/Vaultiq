@@ -36,8 +36,14 @@ public class BetInsuranceService {
     private final WalletService walletService;
     private final UserService userService;
 
+    // Configuration Constants
+    private static final BigDecimal MIN_INSURANCE_EDGE = new BigDecimal("1.03"); // 3% margin at ~0% coverage
+    private static final BigDecimal MAX_INSURANCE_EDGE = new BigDecimal("1.30"); // 30% margin at 100% coverage
+    private static final BigDecimal MIN_COVERAGE_PERCENT = new BigDecimal("10.00"); // 10% minimum
+    private static final BigDecimal MAX_COVERAGE_PERCENT = new BigDecimal("100.00"); // 100% maximum
+
     @Transactional
-    public BetInsuranceResponse insureBet(UUID betId) {
+    public BetInsuranceResponse insureBet(UUID betId, BigDecimal coveragePercentage) {
         User user = userService.getCurrentUser();
 
         Bet bet = betRepository.findById(betId)
@@ -55,15 +61,37 @@ public class BetInsuranceService {
             throw new BadRequestException("This bet is already insured");
         }
 
-        // Calculate premium based on odds
-        BigDecimal odds = bet.getOddsAtPlacement();
-        BigDecimal premiumRate = calculatePremiumRate(odds);
-        BigDecimal premium = bet.getStake().multiply(premiumRate).setScale(2, RoundingMode.HALF_UP);
+        if (coveragePercentage.compareTo(MIN_COVERAGE_PERCENT) < 0 || coveragePercentage.compareTo(MAX_COVERAGE_PERCENT) > 0) {
+            throw new BadRequestException("Coverage must be between 10% and 100%");
+        }
 
-        // Refund percentage: higher premium → lower refund, but reasonable protection
-        BigDecimal refundPercentage = BigDecimal.ONE.subtract(premiumRate)
-                .multiply(new BigDecimal("50"))
-                .setScale(2, RoundingMode.HALF_UP);
+        BigDecimal odds = bet.getOddsAtPlacement();
+        BigDecimal stake = bet.getStake();
+
+        // 1. Coverage Ratio (C)
+        BigDecimal c = coveragePercentage.divide(new BigDecimal("100"), 4, RoundingMode.HALF_UP);
+
+        // 2. True Probability of Losing
+        // Reverse engineer true prob by stripping the 1.05 odds engine margin
+        BigDecimal oddsWithMargin = odds.multiply(new BigDecimal("1.05"));
+        BigDecimal probWin = BigDecimal.ONE.divide(oddsWithMargin, 4, RoundingMode.HALF_UP);
+        BigDecimal probLose = BigDecimal.ONE.subtract(probWin);
+
+        // 3. Dynamic Edge: Edge(C) = MIN_EDGE + C * (MAX_EDGE - MIN_EDGE)
+        BigDecimal edgeDiff = MAX_INSURANCE_EDGE.subtract(MIN_INSURANCE_EDGE);
+        BigDecimal dynamicEdge = MIN_INSURANCE_EDGE.add(c.multiply(edgeDiff));
+
+        // 4. Premium = Expected Payout * Dynamic Edge
+        BigDecimal expectedPayout = stake.multiply(c).multiply(probLose);
+        BigDecimal premium = expectedPayout.multiply(dynamicEdge).setScale(2, RoundingMode.HALF_UP);
+
+        // 5. Max Refund
+        BigDecimal refundAmount = stake.multiply(c).setScale(2, RoundingMode.HALF_UP);
+
+        // Safety cap: Premium should never exceed the refund they get
+        if (premium.compareTo(refundAmount) >= 0) {
+            throw new BadRequestException("Premium exceeds potential refund at this coverage level due to high mathematical risk. Please lower your coverage.");
+        }
 
         // Debit premium from wallet
         walletService.debit(
@@ -72,19 +100,19 @@ public class BetInsuranceService {
                 TxnType.INSURANCE_PREMIUM,
                 betId,
                 "BET_INSURANCE",
-                String.format("Insurance premium for bet %s — rate %.2f%%", betId, premiumRate.multiply(new BigDecimal("100")))
+                String.format("Insurance premium for bet %s (%.2f%% coverage)", betId, coveragePercentage)
         );
 
         BetInsurance insurance = BetInsurance.builder()
                 .bet(bet)
                 .premium(premium)
-                .refundPercentage(refundPercentage)
+                .refundPercentage(coveragePercentage)
                 .build();
 
         insurance = insuranceRepository.save(insurance);
 
         log.info("Bet {} insured — premium {}, refund percentage {}%",
-                betId, premium, refundPercentage);
+                betId, premium, coveragePercentage);
 
         return mapToResponse(insurance);
     }
@@ -130,20 +158,7 @@ public class BetInsuranceService {
 
     // ── Helpers ──
 
-    private BigDecimal calculatePremiumRate(BigDecimal odds) {
-        // premiumRate = min(0.15, 0.03 + (odds - 1.5) * 0.02)
-        BigDecimal rate = new BigDecimal("0.03")
-                .add(odds.subtract(new BigDecimal("1.5"))
-                        .multiply(new BigDecimal("0.02")));
 
-        BigDecimal maxRate = new BigDecimal("0.15");
-        BigDecimal minRate = new BigDecimal("0.03");
-
-        if (rate.compareTo(maxRate) > 0) rate = maxRate;
-        if (rate.compareTo(minRate) < 0) rate = minRate;
-
-        return rate.setScale(4, RoundingMode.HALF_UP);
-    }
 
     private BetInsuranceResponse mapToResponse(BetInsurance insurance) {
         return BetInsuranceResponse.builder()

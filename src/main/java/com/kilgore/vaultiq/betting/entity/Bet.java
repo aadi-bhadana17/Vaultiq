@@ -74,6 +74,9 @@ public class Bet {
     @Column(name = "settled_at")
     private LocalDateTime settledAt;
 
+    @OneToOne(mappedBy = "bet", fetch = FetchType.LAZY, cascade = CascadeType.ALL)
+    private BetInsurance insurance;
+
     @PrePersist
     protected void onCreate() {
         createdAt = LocalDateTime.now();

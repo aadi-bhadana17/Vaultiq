@@ -28,6 +28,10 @@ public interface BetRepository extends JpaRepository<Bet, UUID> {
      */
     Page<Bet> findByUserIdOrderByCreatedAtDesc(UUID userId, Pageable pageable);
 
+    long countByUserId(UUID userId);
+
+    long countByUserIdAndStatus(UUID userId, BetStatus status);
+
     // ── Suspicion Detection Queries ──
 
     /**

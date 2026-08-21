@@ -45,6 +45,7 @@ public class BetSettlementService {
     private final FixtureRepository fixtureRepository;
     private final MatchResultRepository matchResultRepository;
     private final WalletService walletService;
+    private final com.kilgore.vaultiq.identity.repository.UserRepository userRepository;
 
     // ── Phase 5 dependencies ──
     private final BetBuilderLegRepository betBuilderLegRepository;
@@ -80,22 +81,49 @@ public class BetSettlementService {
                 fixtureId, result.getHomeScore(), result.getAwayScore(), winningOutcomes);
 
         // ── Settlement pipeline ──
-        settleStandardBets(fixtureId, fixture, winningOutcomes);
-        settleBetBuilderLegs(fixtureId, winningOutcomes);
-        settleSyndicateBets(fixtureId, fixture, winningOutcomes);
+        BigDecimal totalStakes = BigDecimal.ZERO;
+        BigDecimal totalPayouts = BigDecimal.ZERO;
 
-        log.info("Settlement complete for fixture {}", fixtureId);
+        BigDecimal standardResult[] = settleStandardBets(fixtureId, fixture, winningOutcomes);
+        totalStakes = totalStakes.add(standardResult[0]);
+        totalPayouts = totalPayouts.add(standardResult[1]);
+
+        settleBetBuilderLegs(fixtureId, winningOutcomes); // Bet builders are complex to attribute to a single fixture
+
+        BigDecimal syndicateResult[] = settleSyndicateBets(fixtureId, fixture, winningOutcomes);
+        totalStakes = totalStakes.add(syndicateResult[0]);
+        totalPayouts = totalPayouts.add(syndicateResult[1]);
+
+        // Platform Profit Logic
+        BigDecimal platformProfit = totalStakes.subtract(totalPayouts);
+        fixture.setPlatformProfit(platformProfit);
+        fixtureRepository.save(fixture);
+
+        userRepository.findFirstByRole(com.kilgore.vaultiq.identity.entity.Role.ADMIN).ifPresent(admin -> {
+            if (platformProfit.compareTo(BigDecimal.ZERO) > 0) {
+                walletService.credit(admin.getId(), platformProfit, TxnType.PLATFORM_PROFIT, fixtureId, "FIXTURE", "Platform profit from fixture");
+            } else if (platformProfit.compareTo(BigDecimal.ZERO) < 0) {
+                walletService.debit(admin.getId(), platformProfit.abs(), TxnType.PLATFORM_LOSS, fixtureId, "FIXTURE", "Platform loss from fixture");
+            }
+        });
+
+        log.info("Settlement complete for fixture {} - Platform Profit: {}", fixtureId, platformProfit);
     }
 
     // ── Step 1: Standard single bets ──
 
-    private void settleStandardBets(UUID fixtureId, Fixture fixture, Set<BetOutcome> winningOutcomes) {
+    private BigDecimal[] settleStandardBets(UUID fixtureId, Fixture fixture, Set<BetOutcome> winningOutcomes) {
         List<Bet> pendingBets = betRepository.findByFixtureIdAndStatus(fixtureId, BetStatus.PENDING);
+
+        BigDecimal totalStakes = BigDecimal.ZERO;
+        BigDecimal totalPayouts = BigDecimal.ZERO;
 
         int wonCount = 0;
         int lostCount = 0;
 
         for (Bet bet : pendingBets) {
+            totalStakes = totalStakes.add(bet.getStake());
+
             if (winningOutcomes.contains(bet.getOutcome())) {
                 // ── WON ──
                 bet.setStatus(BetStatus.WON);
@@ -118,6 +146,7 @@ public class BetSettlementService {
                 // Process tipster cuts for copy bets
                 processTipsterCut(bet, true);
 
+                totalPayouts = totalPayouts.add(bet.getPotentialPayout());
                 wonCount++;
             } else {
                 // ── LOST ──
@@ -138,6 +167,8 @@ public class BetSettlementService {
 
         log.info("Standard bets settled for fixture {} — {} won, {} lost",
                 fixtureId, wonCount, lostCount);
+        
+        return new BigDecimal[]{totalStakes, totalPayouts};
     }
 
     // ── Step 2: BetBuilder legs ──
@@ -198,13 +229,17 @@ public class BetSettlementService {
 
     // ── Step 3: Syndicate bets ──
 
-    private void settleSyndicateBets(UUID fixtureId, Fixture fixture, Set<BetOutcome> winningOutcomes) {
+    private BigDecimal[] settleSyndicateBets(UUID fixtureId, Fixture fixture, Set<BetOutcome> winningOutcomes) {
         List<SyndicateBet> pendingBets = syndicateBetRepository.findByFixtureIdAndStatus(
                 fixtureId, BetStatus.PENDING);
 
-        if (pendingBets.isEmpty()) return;
+        BigDecimal totalStakes = BigDecimal.ZERO;
+        BigDecimal totalPayouts = BigDecimal.ZERO;
+
+        if (pendingBets.isEmpty()) return new BigDecimal[]{totalStakes, totalPayouts};
 
         for (SyndicateBet syndicateBet : pendingBets) {
+            totalStakes = totalStakes.add(syndicateBet.getTotalStake());
             syndicateBet.setSettledAt(LocalDateTime.now());
             Syndicate syndicate = syndicateBet.getSyndicate();
 
@@ -238,6 +273,8 @@ public class BetSettlementService {
                     );
                 }
 
+                totalPayouts = totalPayouts.add(totalPayout);
+
                 log.info("Syndicate '{}' bet WON — {} members paid, total payout {}",
                         syndicate.getName(), members.size(), totalPayout);
             } else {
@@ -249,6 +286,8 @@ public class BetSettlementService {
             syndicate.setStatus(SyndicateStatus.SETTLED);
             syndicateBetRepository.save(syndicateBet);
         }
+
+        return new BigDecimal[]{totalStakes, totalPayouts};
     }
 
     // ── Step 4: Insurance refunds ──
@@ -260,16 +299,16 @@ public class BetSettlementService {
     // ── Step 5: Tipster cuts for copy bets ──
 
     private void processTipsterCut(Bet bet, boolean isWin) {
-        // Check if this bet is a tipster's original (has copy bets pointing to it)
-        List<CopyBet> copies = copyBetRepository.findByOriginalBetId(bet.getId());
-        if (copies.isEmpty()) return;
-
-        // Update tipster stats
+        // Update tipster stats regardless of followers (crucial for probation)
         tipsterProfileRepository.findByUserId(bet.getUser().getId())
                 .ifPresent(tipster -> {
                     tipsterService.updateStats(bet.getUser().getId(), isWin);
 
                     if (isWin) {
+                        // Check if this bet is a tipster's original (has copy bets pointing to it)
+                        List<CopyBet> copies = copyBetRepository.findByOriginalBetId(bet.getId());
+                        if (copies.isEmpty()) return;
+
                         // Process cuts for each winning copy bet
                         for (CopyBet copyBet : copies) {
                             Bet followerBet = copyBet.getCopyBet();

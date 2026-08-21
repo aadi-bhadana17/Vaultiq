@@ -17,8 +17,10 @@ public class BetInsuranceController {
     private final BetInsuranceService insuranceService;
 
     @PostMapping("/{betId}/insure")
-    public ResponseEntity<ApiResponse<BetInsuranceResponse>> insureBet(@PathVariable UUID betId) {
-        BetInsuranceResponse response = insuranceService.insureBet(betId);
+    public ResponseEntity<ApiResponse<BetInsuranceResponse>> insureBet(
+            @PathVariable UUID betId,
+            @jakarta.validation.Valid @RequestBody com.kilgore.vaultiq.betting.dto.InsuranceRequest request) {
+        BetInsuranceResponse response = insuranceService.insureBet(betId, request.getCoveragePercentage());
         return ResponseEntity.ok(ApiResponse.success("Bet insured successfully", response));
     }
 

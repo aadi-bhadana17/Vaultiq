@@ -14,6 +14,7 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.*;
 
 import java.time.LocalDateTime;
@@ -32,6 +33,7 @@ public class BetSuspicionController {
     private final UserService userService;
 
     @GetMapping
+    @Transactional(readOnly = true)
     public ResponseEntity<ApiResponse<List<BetSuspicionFlagResponse>>> getUnresolvedFlags(
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "20") int size) {
@@ -43,7 +45,21 @@ public class BetSuspicionController {
         return ResponseEntity.ok(ApiResponse.success(responses));
     }
 
+    @GetMapping("/resolved")
+    @Transactional(readOnly = true)
+    public ResponseEntity<ApiResponse<List<BetSuspicionFlagResponse>>> getResolvedFlags(
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "20") int size) {
+        Page<BetSuspicionFlag> flags = flagRepository.findByResolvedTrueOrderByCreatedAtDesc(
+                PageRequest.of(page, size));
+        List<BetSuspicionFlagResponse> responses = flags.getContent().stream()
+                .map(this::mapToResponse)
+                .collect(Collectors.toList());
+        return ResponseEntity.ok(ApiResponse.success(responses));
+    }
+
     @GetMapping("/user/{userId}")
+    @Transactional(readOnly = true)
     public ResponseEntity<ApiResponse<List<BetSuspicionFlagResponse>>> getFlagsByUser(
             @PathVariable UUID userId,
             @RequestParam(defaultValue = "0") int page,
@@ -57,6 +73,7 @@ public class BetSuspicionController {
     }
 
     @PostMapping("/{id}/resolve")
+    @Transactional
     public ResponseEntity<ApiResponse<BetSuspicionFlagResponse>> resolveFlag(
             @PathVariable UUID id,
             @RequestBody ResolveFlagRequest request) {
