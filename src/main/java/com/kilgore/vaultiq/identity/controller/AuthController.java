@@ -3,6 +3,7 @@ package com.kilgore.vaultiq.identity.controller;
 import com.kilgore.vaultiq.identity.dto.AuthResponse;
 import com.kilgore.vaultiq.identity.dto.LoginRequest;
 import com.kilgore.vaultiq.identity.dto.RegisterRequest;
+import com.kilgore.vaultiq.identity.dto.ChangePasswordRequest;
 import com.kilgore.vaultiq.identity.dto.UserProfileResponse;
 import com.kilgore.vaultiq.identity.service.AuthService;
 import com.kilgore.vaultiq.identity.service.UserService;
@@ -38,5 +39,11 @@ public class AuthController {
     public ResponseEntity<ApiResponse<UserProfileResponse>> getCurrentUser() {
         UserProfileResponse profile = userService.getProfile();
         return ResponseEntity.ok(ApiResponse.success(profile));
+    }
+
+    @PostMapping("/change-password")
+    public ResponseEntity<ApiResponse<Void>> changePassword(@Valid @RequestBody ChangePasswordRequest request) {
+        authService.changePassword(request);
+        return ResponseEntity.ok(ApiResponse.success("Password changed successfully", null));
     }
 }

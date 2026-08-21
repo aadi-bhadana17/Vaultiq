@@ -10,6 +10,7 @@ import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.security.crypto.password.PasswordEncoder;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -34,11 +35,19 @@ public class AuthService {
             throw new BadRequestException("Email already registered");
         }
 
+        Role userRole = Role.USER;
+        if (request.getRole() != null && request.getRole().equalsIgnoreCase("ADMIN")) {
+            if (userRepository.countByRole(Role.ADMIN) > 0) {
+                throw new BadRequestException("Platform already has an Admin. Only 1 Admin is allowed.");
+            }
+            userRole = Role.ADMIN;
+        }
+
         User user = User.builder()
                 .username(request.getUsername())
                 .email(request.getEmail())
                 .passwordHash(passwordEncoder.encode(request.getPassword()))
-                .role(Role.USER)
+                .role(userRole)
                 .build();
 
         userRepository.save(user);
@@ -69,5 +78,19 @@ public class AuthService {
                 .username(user.getUsername())
                 .role(user.getRole().name())
                 .build();
+    }
+
+    @Transactional
+    public void changePassword(ChangePasswordRequest request) {
+        String username = SecurityContextHolder.getContext().getAuthentication().getName();
+        User user = userRepository.findByUsername(username)
+                .orElseThrow(() -> new BadRequestException("User not found"));
+
+        if (!passwordEncoder.matches(request.getOldPassword(), user.getPasswordHash())) {
+            throw new BadRequestException("Incorrect old password");
+        }
+
+        user.setPasswordHash(passwordEncoder.encode(request.getNewPassword()));
+        userRepository.save(user);
     }
 }
