@@ -1,5 +1,6 @@
 package com.kilgore.vaultiq.identity.repository;
 
+import com.kilgore.vaultiq.identity.entity.Role;
 import com.kilgore.vaultiq.identity.entity.User;
 import jakarta.persistence.LockModeType;
 import org.springframework.data.jpa.repository.JpaRepository;
@@ -21,6 +22,10 @@ public interface UserRepository extends JpaRepository<User, UUID> {
     boolean existsByUsername(String username);
 
     boolean existsByEmail(String email);
+
+    long countByRole(Role role);
+
+    Optional<User> findFirstByRole(Role role);
 
     /**
      * Acquires a PESSIMISTIC_WRITE lock on the User row.

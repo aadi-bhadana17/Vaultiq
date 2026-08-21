@@ -39,7 +39,11 @@ public class MatchResultService {
         Fixture fixture = fixtureService.findFixtureOrThrow(fixtureId);
 
         if (fixture.getStatus() == FixtureStatus.SCHEDULED || fixture.getStatus() == FixtureStatus.FINISHED) {
-            throw new BadRequestException("Scores can only be updated when fixture is LOCKED or OPEN");
+            throw new BadRequestException("Scores can only be updated when fixture is LOCKED, OPEN, HALF_TIME, AWAITING_EXTRA_TIME or ADDITIONAL_TIME");
+        }
+
+        if (request.getMatchMinute() < fixture.getMatchMinute()) {
+            throw new BadRequestException(String.format("Match time can only move forward. Current time: %d", fixture.getMatchMinute()));
         }
 
         fixture.setMatchMinute(request.getMatchMinute());
@@ -169,6 +173,31 @@ public class MatchResultService {
         MatchResult matchResult = matchResultRepository.findByFixtureId(fixtureId)
                 .orElseThrow(() -> new ResourceNotFoundException("MatchResult", "fixtureId", fixtureId));
         return mapToResponse(matchResult, fixtureId);
+    }
+
+    @Transactional
+    public void resumeHalfTime(UUID fixtureId) {
+        Fixture fixture = fixtureService.findFixtureOrThrow(fixtureId);
+        if (fixture.getStatus() != FixtureStatus.HALF_TIME) {
+            throw new BadRequestException("Fixture is not at HALF_TIME");
+        }
+        fixture.setStatus(FixtureStatus.OPEN);
+        fixture.setMatchMinute(46);
+        fixtureRepository.save(fixture);
+    }
+
+    @Transactional
+    public void setAdditionalTime(UUID fixtureId, int minutes) {
+        Fixture fixture = fixtureService.findFixtureOrThrow(fixtureId);
+        if (fixture.getStatus() != FixtureStatus.AWAITING_EXTRA_TIME) {
+            throw new BadRequestException("Fixture is not AWAITING_EXTRA_TIME");
+        }
+        if (minutes < 0) {
+            throw new BadRequestException("Additional time cannot be negative");
+        }
+        fixture.setAdditionalTimeMinutes(minutes);
+        fixture.setStatus(FixtureStatus.ADDITIONAL_TIME);
+        fixtureRepository.save(fixture);
     }
 
     private MatchResultResponse mapToResponse(MatchResult matchResult, UUID fixtureId) {

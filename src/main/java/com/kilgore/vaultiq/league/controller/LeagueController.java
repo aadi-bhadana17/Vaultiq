@@ -35,6 +35,13 @@ public class LeagueController {
         return ResponseEntity.ok(ApiResponse.success(leagues));
     }
 
+    @GetMapping("/my")
+    @PreAuthorize("hasAnyRole('LEAGUE_ADMIN', 'ADMIN')")
+    public ResponseEntity<ApiResponse<List<LeagueResponse>>> getMyLeagues() {
+        List<LeagueResponse> leagues = leagueService.getMyLeagues();
+        return ResponseEntity.ok(ApiResponse.success(leagues));
+    }
+
     @GetMapping("/{id}")
     public ResponseEntity<ApiResponse<LeagueResponse>> getLeagueById(@PathVariable UUID id) {
         LeagueResponse response = leagueService.getLeagueById(id);

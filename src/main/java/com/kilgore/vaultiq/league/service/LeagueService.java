@@ -55,6 +55,14 @@ public class LeagueService {
     }
 
     @Transactional(readOnly = true)
+    public List<LeagueResponse> getMyLeagues() {
+        User currentUser = userService.getCurrentUser();
+        return leagueRepository.findByCreatedBy(currentUser).stream()
+                .map(this::mapToResponse)
+                .collect(Collectors.toList());
+    }
+
+    @Transactional(readOnly = true)
     public LeagueResponse getLeagueById(UUID id) {
         League league = findLeagueOrThrow(id);
         return mapToResponse(league);
